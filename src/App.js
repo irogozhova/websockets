@@ -1,50 +1,92 @@
-import React, { useState, useEffect } from 'react';
-import useWebSocket from 'react-use-websocket';
+import React, { useState, useRef, useEffect } from 'react';
 
 import './app.css';
 
 const App = () => {
   const [inputValue, setInputValue] = useState('');
-  const [leftBoxContext, setLeftBoxContent] = useState([]);
-  const [rightBoxContext, setRightBoxContent] = useState([]);
+  const [leftBoxContent, setLeftBoxContent] = useState([]);
+  const [rightBoxContent, setRightBoxContent] = useState([]);
 
-  const { sendMessage, lastMessage, readyState } = useWebSocket('wss://ws.postman-echo.com/raw');
+  const webSocketRef = useRef(null);
+
+  const leftBoxContentRef = useRef([]);
+  leftBoxContentRef.current = leftBoxContent;
+
+  const rightBoxContentRef = useRef([]);
+  rightBoxContentRef.current = rightBoxContent;
+
+  const inputRef = React.createRef();
 
   useEffect(() => {
-    if (lastMessage !== null) {
-      const { data } = lastMessage;
+    webSocketRef.current = new WebSocket('wss://ws.postman-echo.com/raw');
 
-      const firstChar = data.charAt(0);
+    webSocketRef.current.addEventListener('message', handleReceiveMessage);
 
-      if (/^[A-Z]$/.test(firstChar)) {
-        setLeftBoxContent([...leftBoxContext, data]);
-      } else {
-        setRightBoxContent([...rightBoxContext, data]);
-      }
-    }
-  }, [lastMessage]);
+    return () => {
+      webSocketRef.current.close();
+    };
+  }, []);
 
-  const handleSendRequest = () => {
-    if (readyState === 0) {
+  const sendMessage = () => {
+    if (inputValue.length === 0) {
       return;
     }
-
-    sendMessage(inputValue);
+  
+    if (webSocketRef.current?.readyState === WebSocket.OPEN) {
+      webSocketRef.current.send(inputValue);
+  
+      setInputValue('');
+      inputRef.current.focus();
+    } else {
+      console.log('Connection is not open.');
+    }
   }
 
-  const handleMsgChange = (e) => {
+  const handleButtonClick = () => {
+    sendMessage();
+  }
+
+  const handleKeyDown = (event) => {
+    if (event.key === 'Enter') {
+      sendMessage();
+    }
+  }
+
+  const handleChangeMessage = (e) => {
     setInputValue(e.target.value);
   }
+
+  const handleReceiveMessage = (event) => {
+    const message = event.data;
+
+    const firstChar = message.charAt(0);
+
+    if (/^[A-Z]$/.test(firstChar)) {
+      setLeftBoxContent([...leftBoxContentRef.current, message]);
+    } else {
+      setRightBoxContent([...rightBoxContentRef.current, message]);
+    }
+  }
+
+  const mapMessages = (el, i) => (
+    <div key={i}>{el}</div>
+  );
 
   return (
     <div className='container'>
       <div className='flexBlock'>
-        <div className='box'>{leftBoxContext.map((el, i) => (<div key={i}>{el}</div>))}</div>
-        <div className='box'>{rightBoxContext.map((el, i) => (<div key={i}>{el}</div>))}</div>
+        <div className='box'>{leftBoxContent.map(mapMessages)}</div>
+        <div className='box'>{rightBoxContent.map(mapMessages)}</div>
       </div>
       <div className='flexBlock'>
-        <input type="text" value={inputValue} onChange={handleMsgChange} />
-        <button onClick={handleSendRequest}>Send</button>
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={handleChangeMessage}
+          onKeyDown={handleKeyDown}
+        />
+        <button onClick={handleButtonClick}>Send</button>
       </div>
     </div>
   );
